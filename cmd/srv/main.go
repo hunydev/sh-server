@@ -9,7 +9,7 @@ import (
 
 func main() {
 	dbPath := getEnv("DB_PATH", "./sh.db")
-	hostname := getEnv("HOSTNAME", "sh.huny.dev")
+	hostname := getEnv("HOSTNAME", "localhost:8000")
 	adminToken := getEnv("ADMIN_TOKEN", "")
 	addr := ":" + getEnv("PORT", "8000")
 
@@ -26,7 +26,7 @@ func main() {
 		log.Fatalf("Failed to create server: %v", err)
 	}
 
-	log.Printf("Starting sh.huny.dev server on %s", addr)
+	log.Printf("Starting SH Server on %s", addr)
 	log.Printf("Database: %s", dbPath)
 	log.Printf("Hostname: %s", hostname)
 

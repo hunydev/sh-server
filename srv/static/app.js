@@ -8,6 +8,7 @@
     let folders = [];
     let draggedScript = null;
     let contextMenuFolder = null;
+    let serverConfig = { hostname: '', auth_required: false };
 
     const $ = (sel) => document.querySelector(sel);
     const $$ = (sel) => document.querySelectorAll(sel);
@@ -35,8 +36,25 @@
 
     // Initialize
     async function init() {
-        // Check if we have a valid token
-        if (adminToken) {
+        // Fetch server config first
+        try {
+            const configRes = await fetch('/_config.json');
+            if (configRes.ok) {
+                serverConfig = await configRes.json();
+            }
+        } catch (e) {
+            console.error('Failed to fetch config:', e);
+        }
+
+        // Update welcome commands with actual hostname
+        updateWelcomeCommands();
+
+        // If auth is not required, skip auth modal entirely
+        if (!serverConfig.auth_required) {
+            $('#auth-modal').classList.remove('active');
+            await loadData();
+        } else if (adminToken) {
+            // Check if we have a valid token
             try {
                 await api('GET', '/api/scripts');
                 $('#auth-modal').classList.remove('active');
@@ -450,9 +468,21 @@
     function updateCurlCommand() {
         const path = $('#script-path').value;
         if (path && path.endsWith('.sh')) {
-            $('#curl-command').textContent = `curl -fsSL https://sh.huny.dev${path} | sh`;
+            const hostname = serverConfig.hostname || window.location.host;
+            $('#curl-command').textContent = `curl -fsSL https://${hostname}${path} | sh`;
         } else {
             $('#curl-command').textContent = '';
+        }
+    }
+
+    function updateWelcomeCommands() {
+        const hostname = serverConfig.hostname || window.location.host;
+        const commands = `curl -fsSL https://${hostname}/help.sh | sh
+curl -fsSL https://${hostname}/search.sh | sh
+curl -fsSL https://${hostname}/install.sh | sh`;
+        const el = $('#welcome-commands');
+        if (el) {
+            el.textContent = commands;
         }
     }
 

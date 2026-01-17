@@ -26,7 +26,7 @@ COPY --from=builder /app/sh-server .
 # Environment variables
 ENV PORT=8000
 ENV DB_PATH=/data/sh.db
-ENV HOSTNAME=sh.huny.dev
+ENV HOSTNAME=
 ENV ADMIN_TOKEN=
 
 # Create data directory

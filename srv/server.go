@@ -115,27 +115,34 @@ func (s *Server) HandleHelp(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "max-age=300")
 	fmt.Fprintf(w, `#!/bin/sh
-# sh.huny.dev - Script Repository
+# SH Server - Script Repository
 # ================================
 
 cat << 'EOF'
 
-sh.huny.dev - Personal Script Repository
-=========================================
+SH Server - Personal Script Repository
+=======================================
 
 Usage:
   curl -fsSL https://%s/help.sh | sh        # Show this help
   curl -fsSL https://%s/search.sh | sh      # Interactive search (TUI)
+  curl -fsSL https://%s/install.sh | sh     # Install 'shs' alias
   curl -fsSL https://%s/<path>.sh | sh      # Run a specific script
 
 Examples:
   curl -fsSL https://%s/tools/sysinfo.sh | sh
   curl -fsSL https://%s/network/check.sh | sh
 
+After installing 'shs' alias:
+  shs help                    # Show this help
+  shs search                  # Interactive search
+  shs tools/sysinfo           # Run tools/sysinfo.sh
+  shs uninstall               # Remove shs alias
+
 Browse scripts at: https://%s
 
 EOF
-`, s.Hostname, s.Hostname, s.Hostname, s.Hostname, s.Hostname, s.Hostname)
+`, s.Hostname, s.Hostname, s.Hostname, s.Hostname, s.Hostname, s.Hostname, s.Hostname)
 }
 
 // HandleSearch serves the search.sh TUI script
@@ -144,7 +151,7 @@ func (s *Server) HandleSearch(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-cache")
 	
 	script := fmt.Sprintf(`#!/bin/sh
-# Interactive script browser for sh.huny.dev
+# Interactive script browser for SH Server
 # Hierarchical folder navigation
 
 BASE_URL="https://%s"
@@ -334,7 +341,7 @@ browse_dialog() {
         
         ITEM_COUNT=$(echo "$ITEMS" | grep -c . || echo 0)
         
-        CHOICE=$(eval "$DIALOG_CMD --title 'sh.huny.dev' --menu 'Current: $CURRENT_PATH' 20 60 15 $MENU_ITEMS" 3>&1 1>&2 2>&3 || true)
+        CHOICE=$(eval "$DIALOG_CMD --title 'SH Server' --menu 'Current: $CURRENT_PATH' 20 60 15 $MENU_ITEMS" 3>&1 1>&2 2>&3 || true)
         
         [ -z "$CHOICE" ] && exit 0
         
@@ -388,7 +395,7 @@ browse_fallback() {
         
         echo ""
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
-        echo "  sh.huny.dev - Script Browser"
+        echo "  SH Server - Script Browser"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
         echo "  📂 Current: $CURRENT_PATH"
         echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -775,6 +782,171 @@ func (s *Server) HandleCatalog(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(entries)
 }
 
+// HandleConfig returns server configuration for the UI
+func (s *Server) HandleConfig(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"hostname":       s.Hostname,
+		"auth_required":  s.AdminToken != "",
+	})
+}
+
+// HandleInstall serves the install.sh script for setting up the shs alias
+func (s *Server) HandleInstall(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "max-age=300")
+	
+	script := fmt.Sprintf(`#!/bin/sh
+# SH Server - Install Script
+# Installs the 'shs' command alias for easy script execution
+set -e
+
+BASE_URL="https://%s"
+
+# Colors
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  SH Server - Alias Installer"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+
+# Check for curl
+if ! command -v curl >/dev/null 2>&1; then
+    echo "${RED}Error: curl is required but not installed.${NC}"
+    echo "Please install curl first:"
+    echo "  Ubuntu/Debian: sudo apt install curl"
+    echo "  CentOS/RHEL:   sudo yum install curl"
+    echo "  macOS:         brew install curl"
+    exit 1
+fi
+
+echo "${GREEN}✓${NC} curl is available"
+
+# Detect shell config file
+detect_shell_config() {
+    SHELL_NAME=$(basename "$SHELL")
+    case "$SHELL_NAME" in
+        bash)
+            if [ -f "$HOME/.bashrc" ]; then
+                echo "$HOME/.bashrc"
+            elif [ -f "$HOME/.bash_profile" ]; then
+                echo "$HOME/.bash_profile"
+            else
+                echo "$HOME/.bashrc"
+            fi
+            ;;
+        zsh)
+            echo "$HOME/.zshrc"
+            ;;
+        fish)
+            echo "$HOME/.config/fish/config.fish"
+            ;;
+        *)
+            echo "$HOME/.profile"
+            ;;
+    esac
+}
+
+SHELL_CONFIG=$(detect_shell_config)
+echo "${GREEN}✓${NC} Detected shell config: $SHELL_CONFIG"
+
+# The shs function
+SHS_FUNCTION='
+# SH Server alias - https://'"${BASE_URL}"'
+shs() {
+    BASE="'"${BASE_URL}"'"
+    case "$1" in
+        ""|help)
+            curl -fsSL "${BASE}/help.sh" | sh
+            ;;
+        search)
+            curl -fsSL "${BASE}/search.sh" | sh
+            ;;
+        install)
+            curl -fsSL "${BASE}/install.sh" | sh
+            ;;
+        uninstall)
+            # Remove shs function from shell config
+            SHELL_CONFIG="'"$SHELL_CONFIG"'"
+            if [ -f "$SHELL_CONFIG" ]; then
+                # Create backup
+                cp "$SHELL_CONFIG" "${SHELL_CONFIG}.bak"
+                # Remove shs function block
+                sed -i.tmp "/# SH Server alias/,/^}$/d" "$SHELL_CONFIG" 2>/dev/null || \
+                sed "/# SH Server alias/,/^}$/d" "$SHELL_CONFIG" > "${SHELL_CONFIG}.new" && mv "${SHELL_CONFIG}.new" "$SHELL_CONFIG"
+                rm -f "${SHELL_CONFIG}.tmp"
+                echo "shs alias removed. Please restart your shell or run: source $SHELL_CONFIG"
+            fi
+            unset -f shs 2>/dev/null || true
+            ;;
+        *)
+            # Add .sh extension if not present
+            SCRIPT_PATH="$1"
+            case "$SCRIPT_PATH" in
+                *.sh) ;;
+                *) SCRIPT_PATH="${SCRIPT_PATH}.sh" ;;
+            esac
+            # Ensure path starts with /
+            case "$SCRIPT_PATH" in
+                /*) ;;
+                *) SCRIPT_PATH="/${SCRIPT_PATH}" ;;
+            esac
+            curl -fsSL "${BASE}${SCRIPT_PATH}" | sh
+            ;;
+    esac
+}
+'
+
+# Check if already installed
+if grep -q "# SH Server alias" "$SHELL_CONFIG" 2>/dev/null; then
+    echo "${YELLOW}!${NC} shs alias already exists in $SHELL_CONFIG"
+    printf "Do you want to reinstall? [y/N] "
+    read -r REPLY </dev/tty
+    case "$REPLY" in
+        [yY]|[yY][eE][sS])
+            # Remove existing
+            sed -i.tmp "/# SH Server alias/,/^}$/d" "$SHELL_CONFIG" 2>/dev/null || \
+            sed "/# SH Server alias/,/^}$/d" "$SHELL_CONFIG" > "${SHELL_CONFIG}.new" && mv "${SHELL_CONFIG}.new" "$SHELL_CONFIG"
+            rm -f "${SHELL_CONFIG}.tmp"
+            ;;
+        *)
+            echo "Installation cancelled."
+            exit 0
+            ;;
+    esac
+fi
+
+# Add shs function to shell config
+echo "$SHS_FUNCTION" >> "$SHELL_CONFIG"
+
+echo ""
+echo "${GREEN}✓${NC} Installation complete!"
+echo ""
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo "  Usage"
+echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+echo ""
+echo "  shs help              # Show help"
+echo "  shs search            # Interactive script browser"
+echo "  shs tools/sysinfo     # Run /tools/sysinfo.sh"
+echo "  shs uninstall         # Remove shs alias"
+echo ""
+echo "To start using shs now, run:"
+echo ""
+echo "  ${GREEN}source $SHELL_CONFIG${NC}"
+echo ""
+echo "Or restart your terminal."
+echo ""
+`, s.Hostname)
+	
+	w.Write([]byte(script))
+}
+
 func strPtr(s string) *string {
 	return &s
 }
@@ -790,7 +962,9 @@ func (s *Server) Serve(addr string) error {
 	// Special endpoints
 	mux.HandleFunc("GET /help.sh", s.HandleHelp)
 	mux.HandleFunc("GET /search.sh", s.HandleSearch)
+	mux.HandleFunc("GET /install.sh", s.HandleInstall)
 	mux.HandleFunc("GET /_catalog.json", s.HandleCatalog)
+	mux.HandleFunc("GET /_config.json", s.HandleConfig)
 	mux.HandleFunc("POST /_auth/unlock", s.HandleUnlock)
 	
 	// API endpoints (for UI)
