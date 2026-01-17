@@ -1,4 +1,4 @@
-module sh.huny.dev
+module github.com/hunydev/sh-server
 
 go 1.25.6
 

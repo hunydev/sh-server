@@ -17,8 +17,8 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
-	"sh.huny.dev/db"
-	"sh.huny.dev/db/dbgen"
+	"github.com/hunydev/sh-server/db"
+	"github.com/hunydev/sh-server/db/dbgen"
 )
 
 //go:embed static/*

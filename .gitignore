@@ -5,6 +5,8 @@ sh-server
 # Database
 *.db
 *.db-journal
+*.db-shm
+*.db-wal
 
 # Environment
 .env

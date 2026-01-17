@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"sh.huny.dev/srv"
+	"github.com/hunydev/sh-server/srv"
 )
 
 func main() {

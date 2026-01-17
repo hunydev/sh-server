@@ -10,7 +10,7 @@ import (
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 
-	"sh.huny.dev/db/dbgen"
+	"github.com/hunydev/sh-server/db/dbgen"
 )
 
 // Script represents a script in API responses
