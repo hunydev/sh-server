@@ -1,0 +1,19 @@
+[Unit]
+Description=sh.huny.dev Script Repository Server
+After=network.target
+
+[Service]
+Type=simple
+User=exedev
+Group=exedev
+WorkingDirectory=/home/exedev/sh-server
+Environment=PORT=8000
+Environment=DB_PATH=/home/exedev/sh-server/sh.db
+Environment=HOSTNAME=sh.huny.dev
+Environment=ADMIN_TOKEN=changeme
+ExecStart=/home/exedev/sh-server/sh-server
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

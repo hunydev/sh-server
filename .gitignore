@@ -1,0 +1,26 @@
+# Binaries
+sh-server
+*.exe
+
+# Database
+*.db
+*.db-journal
+
+# Environment
+.env
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Test coverage
+coverage.out

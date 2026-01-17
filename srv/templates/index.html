@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>sh.huny.dev - Script Repository</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div id="app">
+        <header>
+            <h1>sh.huny.dev</h1>
+            <p class="subtitle">Personal Script Repository</p>
+        </header>
+
+        <div class="main-container">
+            <aside class="sidebar">
+                <div class="sidebar-header">
+                    <h2>Scripts</h2>
+                    <button id="btn-new-folder" class="btn-icon" title="New Folder">📁+</button>
+                    <button id="btn-new-script" class="btn-icon" title="New Script">📄+</button>
+                </div>
+                <div class="search-box">
+                    <input type="text" id="search-input" placeholder="Search scripts...">
+                </div>
+                <div id="tree-container" class="tree">
+                    <div class="loading">Loading...</div>
+                </div>
+            </aside>
+
+            <main class="content">
+                <div id="welcome-view" class="view active">
+                    <div class="welcome-box">
+                        <h2>Welcome to sh.huny.dev</h2>
+                        <p>Manage your shell scripts and access them via curl:</p>
+                        <pre><code>curl -fsSL https://sh.huny.dev/help.sh | sh
+curl -fsSL https://sh.huny.dev/search.sh | sh</code></pre>
+                        <p>Select a script from the sidebar or create a new one.</p>
+                    </div>
+                </div>
+
+                <div id="editor-view" class="view">
+                    <div class="editor-header">
+                        <input type="text" id="script-path" placeholder="/path/to/script.sh" class="script-path-input">
+                        <div class="editor-actions">
+                            <button id="btn-save" class="btn btn-primary">Save</button>
+                            <button id="btn-delete" class="btn btn-danger">Delete</button>
+                        </div>
+                    </div>
+                    <div class="editor-meta">
+                        <div class="meta-row">
+                            <label>Description:</label>
+                            <input type="text" id="script-description" placeholder="Script description">
+                        </div>
+                        <div class="meta-row">
+                            <label>Tags:</label>
+                            <input type="text" id="script-tags" placeholder="comma,separated,tags">
+                        </div>
+                        <div class="meta-row">
+                            <label>Requires:</label>
+                            <input type="text" id="script-requires" placeholder="curl,jq,etc">
+                        </div>
+                        <div class="meta-row inline">
+                            <label>
+                                <input type="checkbox" id="script-locked"> Locked
+                            </label>
+                            <input type="password" id="script-password" placeholder="Password (leave empty to keep)" class="password-input">
+                        </div>
+                        <div class="meta-row inline">
+                            <label>Danger Level:</label>
+                            <select id="script-danger">
+                                <option value="0">Safe</option>
+                                <option value="1">Caution</option>
+                                <option value="2">Dangerous</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="editor-content">
+                        <textarea id="script-content" placeholder="#!/bin/sh
+# Your script here..."></textarea>
+                    </div>
+                    <div class="editor-footer">
+                        <span id="script-info"></span>
+                        <span id="curl-command"></span>
+                    </div>
+                </div>
+            </main>
+        </div>
+    </div>
+
+    <!-- New Folder Modal -->
+    <div id="folder-modal" class="modal">
+        <div class="modal-content">
+            <h3>New Folder</h3>
+            <input type="text" id="new-folder-path" placeholder="/path/to/folder">
+            <div class="modal-actions">
+                <button id="btn-create-folder" class="btn btn-primary">Create</button>
+                <button id="btn-cancel-folder" class="btn">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Admin Token Modal -->
+    <div id="auth-modal" class="modal active">
+        <div class="modal-content">
+            <h3>Admin Authentication</h3>
+            <p>Enter the admin token to manage scripts:</p>
+            <input type="password" id="admin-token" placeholder="Admin Token">
+            <div class="modal-actions">
+                <button id="btn-auth" class="btn btn-primary">Authenticate</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
