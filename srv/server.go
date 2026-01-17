@@ -145,9 +145,10 @@ func (s *Server) HandleSearch(w http.ResponseWriter, r *http.Request) {
 	
 	script := fmt.Sprintf(`#!/bin/sh
 # Interactive script browser for sh.huny.dev
-set -e
+# Hierarchical folder navigation
 
 BASE_URL="https://%s"
+CURRENT_PATH="/"
 
 # Fetch catalog
 fetch_catalog() {
@@ -159,107 +160,337 @@ has_cmd() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# FZF-based browser
-browse_fzf() {
-    CATALOG=$(fetch_catalog)
-    if [ -z "$CATALOG" ]; then
-        echo "Failed to fetch catalog" >&2
-        exit 1
-    fi
-    
-    # Parse JSON and create browsable list
-    ITEMS=$(echo "$CATALOG" | sed 's/},{/}\n{/g' | grep -o '"path":"[^"]*"' | sed 's/"path":"\([^"]*\)"/\1/' | sort)
-    
-    if [ -z "$ITEMS" ]; then
-        echo "No scripts found"
-        exit 0
-    fi
-    
-    SELECTED=$(echo "$ITEMS" | fzf --height=40%% --border --prompt="Select script: " --preview="curl -fsSL ${BASE_URL}{}?preview=1 2>/dev/null || echo 'Preview not available'")
-    
-    if [ -n "$SELECTED" ]; then
-        echo "Running: ${BASE_URL}${SELECTED}"
-        curl -fsSL "${BASE_URL}${SELECTED}" | sh
-    fi
+# Get all script paths from catalog
+get_all_paths() {
+    echo "$CATALOG" | sed 's/},{/}\n{/g' | grep -o '"path":"[^"]*"' | sed 's/"path":"\([^"]*\)"/\1/' | sort
 }
 
-# Whiptail/dialog browser
+# Get items (folders and scripts) in current path
+# Returns: folder names (with /) and script names for current directory only
+get_current_items() {
+    _cur_path="$1"
+    _all_paths=$(get_all_paths)
+    
+    # Normalize current path
+    if [ "$_cur_path" = "/" ]; then
+        _prefix=""
+    else
+        _prefix="$_cur_path"
+    fi
+    
+    _folders=""
+    _scripts=""
+    
+    for _path in $_all_paths; do
+        # Check if path starts with current prefix
+        case "$_path" in
+            ${_prefix}/*)
+                # Get the remainder after prefix
+                _remainder="${_path#${_prefix}/}"
+                
+                # Check if it's a direct child or nested
+                case "$_remainder" in
+                    */*)
+                        # Has more slashes - extract first folder
+                        _folder=$(echo "$_remainder" | cut -d'/' -f1)
+                        # Add to folders if not already added
+                        case " $_folders " in
+                            *" $_folder "*) ;;
+                            *) _folders="$_folders $_folder" ;;
+                        esac
+                        ;;
+                    *)
+                        # Direct child script
+                        _scripts="$_scripts $_remainder"
+                        ;;
+                esac
+                ;;
+        esac
+    done
+    
+    # Output folders first (with / suffix), then scripts
+    for _f in $_folders; do
+        [ -n "$_f" ] && echo "📁 $_f/"
+    done
+    for _s in $_scripts; do
+        [ -n "$_s" ] && echo "📄 $_s"
+    done
+}
+
+# FZF-based hierarchical browser
+browse_fzf() {
+    while true; do
+        ITEMS=$(get_current_items "$CURRENT_PATH")
+        
+        if [ -z "$ITEMS" ] && [ "$CURRENT_PATH" = "/" ]; then
+            echo "No scripts found"
+            exit 0
+        fi
+        
+        # Build menu with navigation options
+        MENU=""
+        if [ "$CURRENT_PATH" != "/" ]; then
+            MENU="⬆️  ../"
+        fi
+        if [ -n "$ITEMS" ]; then
+            if [ -n "$MENU" ]; then
+                MENU=$(printf "%%s\n%%s" "$MENU" "$ITEMS")
+            else
+                MENU="$ITEMS"
+            fi
+        fi
+        
+        # Show current path in prompt
+        SELECTED=$(echo "$MENU" | fzf --height=50%% --border \
+            --header="📂 $CURRENT_PATH" \
+            --prompt="Select: " \
+            --preview='
+                item="{}"
+                base_url="'"${BASE_URL}"'"
+                cur="'"${CURRENT_PATH}"'"
+                if echo "$item" | grep -q "^📁"; then
+                    echo "📁 Folder - press Enter to navigate"
+                elif echo "$item" | grep -q "^\\.\\./\\|^⬆️"; then
+                    echo "⬆️  Go to parent folder"
+                else
+                    name=$(echo "$item" | sed "s/^📄 //")
+                    if [ "$cur" = "/" ]; then
+                        path="/${name}"
+                    else
+                        path="${cur}/${name}"
+                    fi
+                    curl -fsSL "${base_url}${path}?preview=1" 2>/dev/null || echo "Preview not available"
+                fi
+            ')
+        
+        [ -z "$SELECTED" ] && exit 0
+        
+        # Handle selection
+        case "$SELECTED" in
+            "⬆️  ../")
+                # Go up one level
+                CURRENT_PATH=$(dirname "$CURRENT_PATH")
+                [ "$CURRENT_PATH" = "." ] && CURRENT_PATH="/"
+                ;;
+            "📁 "*)
+                # Enter folder
+                FOLDER=$(echo "$SELECTED" | sed 's/^📁 //' | sed 's/\/$//')
+                if [ "$CURRENT_PATH" = "/" ]; then
+                    CURRENT_PATH="/$FOLDER"
+                else
+                    CURRENT_PATH="$CURRENT_PATH/$FOLDER"
+                fi
+                ;;
+            "📄 "*)
+                # Run script
+                SCRIPT=$(echo "$SELECTED" | sed 's/^📄 //')
+                if [ "$CURRENT_PATH" = "/" ]; then
+                    SCRIPT_PATH="/$SCRIPT"
+                else
+                    SCRIPT_PATH="$CURRENT_PATH/$SCRIPT"
+                fi
+                echo ""
+                echo "Running: ${BASE_URL}${SCRIPT_PATH}"
+                echo ""
+                curl -fsSL "${BASE_URL}${SCRIPT_PATH}" | sh
+                exit 0
+                ;;
+        esac
+    done
+}
+
+# Dialog/Whiptail hierarchical browser
 browse_dialog() {
     DIALOG_CMD="$1"
-    CATALOG=$(fetch_catalog)
     
-    ITEMS=$(echo "$CATALOG" | sed 's/},{/}\n{/g' | grep -o '"path":"[^"]*"' | sed 's/"path":"\([^"]*\)"/\1/' | sort)
-    
-    if [ -z "$ITEMS" ]; then
-        echo "No scripts found"
-        exit 0
-    fi
-    
-    # Build menu items
-    MENU_ITEMS=""
-    i=1
-    for item in $ITEMS; do
-        MENU_ITEMS="$MENU_ITEMS $i \"$item\""
-        i=$((i+1))
-    done
-    
-    CHOICE=$(eval "$DIALOG_CMD --title 'sh.huny.dev' --menu 'Select a script:' 20 60 15 $MENU_ITEMS" 3>&1 1>&2 2>&3 || true)
-    
-    if [ -n "$CHOICE" ]; then
-        SELECTED=$(echo "$ITEMS" | sed -n "${CHOICE}p")
-        if [ -n "$SELECTED" ]; then
-            clear
-            echo "Running: ${BASE_URL}${SELECTED}"
-            curl -fsSL "${BASE_URL}${SELECTED}" | sh
+    while true; do
+        ITEMS=$(get_current_items "$CURRENT_PATH")
+        
+        if [ -z "$ITEMS" ] && [ "$CURRENT_PATH" = "/" ]; then
+            echo "No scripts found"
+            exit 0
         fi
-    fi
+        
+        # Build menu items
+        MENU_ITEMS=""
+        i=1
+        
+        # Add parent navigation if not at root
+        if [ "$CURRENT_PATH" != "/" ]; then
+            MENU_ITEMS="$MENU_ITEMS 0 \"⬆️  ../  (parent folder)\""
+        fi
+        
+        # Add folders and scripts
+        echo "$ITEMS" | while read -r item; do
+            [ -z "$item" ] && continue
+            echo "$i $item"
+            i=$((i+1))
+        done > /tmp/sh_menu_$$
+        
+        while read -r num item; do
+            MENU_ITEMS="$MENU_ITEMS $num \"$item\""
+        done < /tmp/sh_menu_$$
+        rm -f /tmp/sh_menu_$$
+        
+        ITEM_COUNT=$(echo "$ITEMS" | grep -c . || echo 0)
+        
+        CHOICE=$(eval "$DIALOG_CMD --title 'sh.huny.dev' --menu 'Current: $CURRENT_PATH' 20 60 15 $MENU_ITEMS" 3>&1 1>&2 2>&3 || true)
+        
+        [ -z "$CHOICE" ] && exit 0
+        
+        if [ "$CHOICE" = "0" ]; then
+            # Go up
+            CURRENT_PATH=$(dirname "$CURRENT_PATH")
+            [ "$CURRENT_PATH" = "." ] && CURRENT_PATH="/"
+            continue
+        fi
+        
+        # Get selected item
+        SELECTED=$(echo "$ITEMS" | sed -n "${CHOICE}p")
+        
+        case "$SELECTED" in
+            "📁 "*)
+                # Enter folder
+                FOLDER=$(echo "$SELECTED" | sed 's/^📁 //' | sed 's/\/$//')
+                if [ "$CURRENT_PATH" = "/" ]; then
+                    CURRENT_PATH="/$FOLDER"
+                else
+                    CURRENT_PATH="$CURRENT_PATH/$FOLDER"
+                fi
+                ;;
+            "📄 "*)
+                # Run script
+                SCRIPT=$(echo "$SELECTED" | sed 's/^📄 //')
+                if [ "$CURRENT_PATH" = "/" ]; then
+                    SCRIPT_PATH="/$SCRIPT"
+                else
+                    SCRIPT_PATH="$CURRENT_PATH/$SCRIPT"
+                fi
+                clear
+                echo "Running: ${BASE_URL}${SCRIPT_PATH}"
+                echo ""
+                curl -fsSL "${BASE_URL}${SCRIPT_PATH}" | sh
+                exit 0
+                ;;
+        esac
+    done
 }
 
-# Fallback: number-based menu
+# Fallback: number-based hierarchical menu
 browse_fallback() {
-    CATALOG=$(fetch_catalog)
-    
-    ITEMS=$(echo "$CATALOG" | sed 's/},{/}\n{/g' | grep -o '"path":"[^"]*"' | sed 's/"path":"\([^"]*\)"/\1/' | sort)
-    
-    if [ -z "$ITEMS" ]; then
-        echo "No scripts found"
-        exit 0
-    fi
-    
-    echo ""
-    echo "sh.huny.dev - Script Browser"
-    echo "============================="
-    echo ""
-    
-    i=1
-    for item in $ITEMS; do
-        echo "  $i) $item"
-        i=$((i+1))
+    while true; do
+        ITEMS=$(get_current_items "$CURRENT_PATH")
+        
+        if [ -z "$ITEMS" ] && [ "$CURRENT_PATH" = "/" ]; then
+            echo "No scripts found"
+            exit 0
+        fi
+        
+        echo ""
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  sh.huny.dev - Script Browser"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  📂 Current: $CURRENT_PATH"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+        
+        i=1
+        
+        # Show parent option if not at root
+        if [ "$CURRENT_PATH" != "/" ]; then
+            echo "  ..) ⬆️  ../ (parent folder)"
+            echo ""
+        fi
+        
+        # Show items
+        echo "$ITEMS" | while read -r item; do
+            [ -z "$item" ] && continue
+            printf "  %%2d) %%s\n" "$i" "$item"
+            i=$((i+1))
+        done
+        
+        ITEM_COUNT=$(echo "$ITEMS" | grep -c . || echo 0)
+        
+        echo ""
+        echo "   0) Exit"
+        echo ""
+        printf "Select [0-%d or ..]: " "$ITEM_COUNT"
+        read -r CHOICE
+        
+        # Handle exit
+        if [ "$CHOICE" = "0" ] || [ -z "$CHOICE" ]; then
+            echo "Goodbye!"
+            exit 0
+        fi
+        
+        # Handle parent navigation
+        if [ "$CHOICE" = ".." ]; then
+            if [ "$CURRENT_PATH" != "/" ]; then
+                CURRENT_PATH=$(dirname "$CURRENT_PATH")
+                [ "$CURRENT_PATH" = "." ] && CURRENT_PATH="/"
+            fi
+            continue
+        fi
+        
+        # Validate numeric choice
+        case "$CHOICE" in
+            ''|*[!0-9]*) 
+                echo "Invalid selection"
+                sleep 1
+                continue
+                ;;
+        esac
+        
+        if [ "$CHOICE" -lt 1 ] || [ "$CHOICE" -gt "$ITEM_COUNT" ]; then
+            echo "Invalid selection"
+            sleep 1
+            continue
+        fi
+        
+        # Get selected item
+        SELECTED=$(echo "$ITEMS" | sed -n "${CHOICE}p")
+        
+        case "$SELECTED" in
+            "📁 "*)
+                # Enter folder
+                FOLDER=$(echo "$SELECTED" | sed 's/^📁 //' | sed 's/\/$//')
+                if [ "$CURRENT_PATH" = "/" ]; then
+                    CURRENT_PATH="/$FOLDER"
+                else
+                    CURRENT_PATH="$CURRENT_PATH/$FOLDER"
+                fi
+                ;;
+            "📄 "*)
+                # Run script
+                SCRIPT=$(echo "$SELECTED" | sed 's/^📄 //')
+                if [ "$CURRENT_PATH" = "/" ]; then
+                    SCRIPT_PATH="/$SCRIPT"
+                else
+                    SCRIPT_PATH="$CURRENT_PATH/$SCRIPT"
+                fi
+                echo ""
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo "Running: ${BASE_URL}${SCRIPT_PATH}"
+                echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+                echo ""
+                curl -fsSL "${BASE_URL}${SCRIPT_PATH}" | sh
+                exit 0
+                ;;
+            *)
+                echo "Invalid selection"
+                sleep 1
+                ;;
+        esac
     done
-    
-    echo ""
-    echo "  0) Exit"
-    echo ""
-    printf "Select a script [0-%d]: " $((i-1))
-    read -r CHOICE
-    
-    if [ "$CHOICE" = "0" ] || [ -z "$CHOICE" ]; then
-        exit 0
-    fi
-    
-    SELECTED=$(echo "$ITEMS" | sed -n "${CHOICE}p")
-    if [ -n "$SELECTED" ]; then
-        echo ""
-        echo "Running: ${BASE_URL}${SELECTED}"
-        echo ""
-        curl -fsSL "${BASE_URL}${SELECTED}" | sh
-    else
-        echo "Invalid selection"
-        exit 1
-    fi
 }
 
 # Main
+CATALOG=$(fetch_catalog)
+if [ -z "$CATALOG" ]; then
+    echo "Failed to fetch catalog from ${BASE_URL}" >&2
+    exit 1
+fi
+
 if has_cmd fzf; then
     browse_fzf
 elif has_cmd whiptail; then
