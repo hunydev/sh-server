@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>sh.huny.dev - Script Repository</title>
+    <title>SH Server - Script Repository</title>
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
     <div id="app">
         <header>
-            <h1>sh.huny.dev</h1>
+            <h1><a href="#" id="logo-link">SH Server</a></h1>
             <p class="subtitle">Personal Script Repository</p>
         </header>
 
@@ -81,7 +81,10 @@ curl -fsSL https://sh.huny.dev/search.sh | sh</code></pre>
                     </div>
                     <div class="editor-footer">
                         <span id="script-info"></span>
-                        <span id="curl-command"></span>
+                        <div class="curl-container">
+                            <code id="curl-command"></code>
+                            <button id="btn-copy-curl" class="btn-copy" title="Copy to clipboard">📋</button>
+                        </div>
                     </div>
                 </div>
             </main>
@@ -98,6 +101,11 @@ curl -fsSL https://sh.huny.dev/search.sh | sh</code></pre>
                 <button id="btn-cancel-folder" class="btn">Cancel</button>
             </div>
         </div>
+    </div>
+
+    <!-- Folder Context Menu -->
+    <div id="folder-context-menu" class="context-menu">
+        <div class="context-menu-item" id="ctx-delete-folder">🗑️ Delete Folder</div>
     </div>
 
     <!-- Admin Token Modal -->

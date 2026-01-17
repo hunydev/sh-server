@@ -34,7 +34,15 @@ header {
 header h1 {
     font-size: 1.5rem;
     font-weight: 600;
+}
+
+header h1 a {
     color: var(--accent);
+    text-decoration: none;
+}
+
+header h1 a:hover {
+    color: var(--accent-hover);
 }
 
 header .subtitle {
@@ -326,13 +334,87 @@ header .subtitle {
     border-top: 1px solid var(--border);
     display: flex;
     justify-content: space-between;
+    align-items: center;
     font-size: 0.75rem;
     color: var(--text-secondary);
+}
+
+.curl-container {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
 }
 
 .editor-footer #curl-command {
     font-family: monospace;
     color: var(--success);
+}
+
+.btn-copy {
+    background: var(--bg-tertiary);
+    border: none;
+    color: var(--text-primary);
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+}
+
+.btn-copy:hover {
+    background: var(--accent);
+}
+
+.btn-copy.copied {
+    background: var(--success);
+}
+
+/* Context Menu */
+.context-menu {
+    display: none;
+    position: fixed;
+    background: var(--bg-secondary);
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    z-index: 1001;
+    min-width: 150px;
+}
+
+.context-menu.active {
+    display: block;
+}
+
+.context-menu-item {
+    padding: 0.75rem 1rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+}
+
+.context-menu-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.context-menu-item:first-child {
+    border-radius: 4px 4px 0 0;
+}
+
+.context-menu-item:last-child {
+    border-radius: 0 0 4px 4px;
+}
+
+/* Drag and Drop */
+.tree-item.dragging {
+    opacity: 0.5;
+}
+
+.tree-item.drag-over {
+    background: var(--accent);
+    outline: 2px dashed var(--accent-hover);
+}
+
+.tree-item.folder.drag-over {
+    background: var(--bg-tertiary);
+    outline: 2px dashed var(--accent);
 }
 
 /* Modal */

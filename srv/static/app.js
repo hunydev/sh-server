@@ -1,4 +1,4 @@
-// sh.huny.dev Admin UI
+// SH Server Admin UI
 (function() {
     'use strict';
 
@@ -6,6 +6,8 @@
     let currentScript = null;
     let scripts = [];
     let folders = [];
+    let draggedScript = null;
+    let contextMenuFolder = null;
 
     const $ = (sel) => document.querySelector(sel);
     const $$ = (sel) => document.querySelectorAll(sel);
@@ -60,6 +62,15 @@
 
         $('#admin-token').addEventListener('keypress', (e) => {
             if (e.key === 'Enter') $('#btn-auth').click();
+        });
+
+        // Logo click - go to home
+        $('#logo-link').addEventListener('click', (e) => {
+            e.preventDefault();
+            currentScript = null;
+            showWelcome();
+            // Clear active state
+            $$('.tree-item').forEach(el => el.classList.remove('active'));
         });
 
         // New script button
@@ -128,6 +139,49 @@
 
         // Update curl command on path change
         $('#script-path').addEventListener('input', updateCurlCommand);
+
+        // Copy curl command button
+        $('#btn-copy-curl').addEventListener('click', () => {
+            const curlCommand = $('#curl-command').textContent;
+            if (curlCommand) {
+                navigator.clipboard.writeText(curlCommand).then(() => {
+                    const btn = $('#btn-copy-curl');
+                    btn.textContent = '✅';
+                    btn.classList.add('copied');
+                    setTimeout(() => {
+                        btn.textContent = '📋';
+                        btn.classList.remove('copied');
+                    }, 1500);
+                }).catch(() => {
+                    alert('Failed to copy to clipboard');
+                });
+            }
+        });
+
+        // Context menu for folder deletion
+        $('#ctx-delete-folder').addEventListener('click', async () => {
+            if (!contextMenuFolder) return;
+            hideContextMenu();
+            
+            if (!confirm(`Delete folder "${contextMenuFolder.path}"? This will NOT delete scripts inside.`)) {
+                return;
+            }
+            
+            try {
+                await api('DELETE', `/api/folders/${contextMenuFolder.id}`);
+                await loadData();
+            } catch (e) {
+                alert('Failed to delete folder: ' + e.message);
+            }
+            contextMenuFolder = null;
+        });
+
+        // Hide context menu on click elsewhere
+        document.addEventListener('click', (e) => {
+            if (!e.target.closest('.context-menu')) {
+                hideContextMenu();
+            }
+        });
     }
 
     async function loadData() {
@@ -202,6 +256,7 @@
 
         container.querySelectorAll('.tree-item.folder').forEach(el => {
             el.addEventListener('click', (e) => {
+                if (e.button !== 0) return; // Only left click
                 const children = el.nextElementSibling;
                 if (children && children.classList.contains('tree-children')) {
                     children.style.display = children.style.display === 'none' ? 'block' : 'none';
@@ -209,6 +264,9 @@
                 }
             });
         });
+
+        // Setup drag and drop
+        setupDragAndDrop(container);
     }
 
     function renderTreeNode(node, isRoot = false) {
@@ -218,18 +276,19 @@
         const folderKeys = Object.keys(node.children).sort();
         folderKeys.forEach(key => {
             const folder = node.children[key];
-            html += `<div class="tree-item folder" data-path="${folder.path}">
+            const folderId = folder.id ? `data-folder-id="${folder.id}"` : '';
+            html += `<div class="tree-item folder" data-path="${folder.path}" ${folderId}>
                 <span class="icon">📂</span>
                 <span class="name">${folder.name}</span>
             </div>`;
-            html += `<div class="tree-children">${renderTreeNode(folder)}</div>`;
+            html += `<div class="tree-children" data-folder-path="${folder.path}">${renderTreeNode(folder)}</div>`;
         });
         
         // Render scripts
         if (node.scripts) {
             node.scripts.sort((a, b) => a.name.localeCompare(b.name)).forEach(s => {
                 const lockedClass = s.locked ? ' locked' : '';
-                html += `<div class="tree-item script${lockedClass}" data-id="${s.id}" data-path="${s.path}">
+                html += `<div class="tree-item script${lockedClass}" data-id="${s.id}" data-path="${s.path}" draggable="true">
                     <span class="icon">📄</span>
                     <span class="name">${s.name}</span>
                 </div>`;
@@ -237,6 +296,105 @@
         }
         
         return html;
+    }
+
+    function hideContextMenu() {
+        $('#folder-context-menu').classList.remove('active');
+    }
+
+    function showContextMenu(x, y) {
+        const menu = $('#folder-context-menu');
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+        menu.classList.add('active');
+    }
+
+    function setupDragAndDrop(container) {
+        // Script drag start
+        container.querySelectorAll('.tree-item.script').forEach(el => {
+            el.addEventListener('dragstart', (e) => {
+                draggedScript = scripts.find(s => s.id === el.dataset.id);
+                el.classList.add('dragging');
+                e.dataTransfer.effectAllowed = 'move';
+            });
+
+            el.addEventListener('dragend', () => {
+                el.classList.remove('dragging');
+                container.querySelectorAll('.drag-over').forEach(e => e.classList.remove('drag-over'));
+                draggedScript = null;
+            });
+        });
+
+        // Folder drop targets
+        container.querySelectorAll('.tree-item.folder').forEach(el => {
+            el.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                if (draggedScript) {
+                    el.classList.add('drag-over');
+                }
+            });
+
+            el.addEventListener('dragleave', () => {
+                el.classList.remove('drag-over');
+            });
+
+            el.addEventListener('drop', async (e) => {
+                e.preventDefault();
+                el.classList.remove('drag-over');
+                
+                if (!draggedScript) return;
+                
+                const targetFolder = el.dataset.path;
+                const newPath = targetFolder + '/' + draggedScript.name;
+                
+                if (newPath === draggedScript.path) return;
+                
+                try {
+                    await api('PUT', `/api/scripts/${draggedScript.id}`, {
+                        ...draggedScript,
+                        path: newPath
+                    });
+                    await loadData();
+                } catch (e) {
+                    alert('Failed to move script: ' + e.message);
+                }
+            });
+
+            // Right-click for folder context menu
+            el.addEventListener('contextmenu', (e) => {
+                e.preventDefault();
+                const folderId = el.dataset.folderId;
+                if (folderId) {
+                    contextMenuFolder = { id: folderId, path: el.dataset.path };
+                    showContextMenu(e.clientX, e.clientY);
+                }
+            });
+        });
+
+        // Root drop target (move to root)
+        container.addEventListener('dragover', (e) => {
+            if (e.target === container && draggedScript) {
+                e.preventDefault();
+            }
+        });
+
+        container.addEventListener('drop', async (e) => {
+            if (e.target !== container || !draggedScript) return;
+            e.preventDefault();
+            
+            const newPath = '/' + draggedScript.name;
+            if (newPath === draggedScript.path) return;
+            
+            try {
+                await api('PUT', `/api/scripts/${draggedScript.id}`, {
+                    ...draggedScript,
+                    path: newPath
+                });
+                await loadData();
+            } catch (e) {
+                alert('Failed to move script: ' + e.message);
+            }
+        });
     }
 
     function filterTree(query) {
