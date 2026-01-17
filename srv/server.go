@@ -594,24 +594,32 @@ SCRIPT_PATH="%s"
 echo "This script is locked. Please enter the password."
 echo ""
 
-# Try to hide input
-if [ -t 0 ]; then
-    # Terminal available, try to hide password
-    stty_orig=$(stty -g 2>/dev/null || true)
+# Check if /dev/tty is available (for curl | sh scenarios)
+if [ -e /dev/tty ]; then
+    # Read from /dev/tty to handle curl | sh piping
+    exec 3</dev/tty
+    
+    # Try to hide password input
+    stty_orig=$(stty -g 2>/dev/tty || true)
     if [ -n "$stty_orig" ]; then
-        stty -echo 2>/dev/null || true
-        trap 'stty "$stty_orig" 2>/dev/null' EXIT INT TERM
+        stty -echo </dev/tty 2>/dev/null || true
+        trap 'stty "$stty_orig" </dev/tty 2>/dev/null' EXIT INT TERM
     fi
-    printf "Password: "
-    read -r PASSWORD
+    
+    printf "Password: " >/dev/tty
+    read -r PASSWORD <&3
+    
     if [ -n "$stty_orig" ]; then
-        stty "$stty_orig" 2>/dev/null || true
+        stty "$stty_orig" </dev/tty 2>/dev/null || true
     fi
-    echo ""
+    echo "" >/dev/tty
+    
+    exec 3<&-
 else
-    # No terminal, read normally
+    # No tty available, try stdin
     printf "Password: "
     read -r PASSWORD
+    echo ""
 fi
 
 if [ -z "$PASSWORD" ]; then
